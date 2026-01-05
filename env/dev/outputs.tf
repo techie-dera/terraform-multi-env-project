@@ -19,12 +19,10 @@ output "app_insights_connection_string" {
   sensitive = true
 }
 
-# If your app module exposes hostname:
 output "webapp_hostname" {
   value = module.app.webapp_default_hostname
 }
 
-# Optional convenience URL:
 output "webapp_url" {
-  value = "https://${module.app.webapp_default_hostname}"
+  value = module.app.webapp_url
 }

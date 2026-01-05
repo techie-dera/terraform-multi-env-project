@@ -1,7 +1,15 @@
+# Terraform directories
 **/.terraform/*
-**/.terraform.lock.hcl
+
+# Terraform state (local only, remote backend is used)
 **/terraform.tfstate
 **/terraform.tfstate.*
+
+# Crash logs
 **/crash.log
+
+# Variable files (often contain secrets)
 **/*.tfvars
+
+# Allow GitHub workflows
 !.github/workflows/*.yml

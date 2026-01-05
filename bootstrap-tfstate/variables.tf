@@ -20,9 +20,9 @@ variable "container_name" {
 }
 
 variable "tags" {
-  type    = map(string)
+  type = map(string)
   default = {
-    project = "acmepay"
+    project    = "acmepay"
     managed_by = "terraform"
   }
 }

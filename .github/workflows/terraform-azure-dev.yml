@@ -97,7 +97,7 @@ jobs:
           terraform_version: "1.6.6"
 
       - name: Terraform Init (dev)
-        working-directory: envs/dev
+        working-directory: env/dev
         shell: bash
         run: |
           set -euo pipefail
@@ -112,14 +112,14 @@ jobs:
         run: terraform fmt -check -recursive
 
       - name: Terraform Validate (dev)
-        working-directory: envs/dev
+        working-directory: env/dev
         run: terraform validate
 
       - name: Terraform Plan (dev)
-        working-directory: envs/dev
+        working-directory: env/dev
         run: terraform plan -out=tfplan
 
       - name: Terraform Apply (dev)
         if: github.ref == 'refs/heads/main'
-        working-directory: envs/dev
+        working-directory: env/dev
         run: terraform apply -auto-approve tfplan

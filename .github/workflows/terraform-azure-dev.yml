@@ -1,0 +1,106 @@
+name: Terraform - Dev (Azure)
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [ "main" ]
+    paths:
+      - "envs/dev/**"
+      - "modules/**"
+      - ".github/workflows/terraform-dev.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: terraform-dev
+  cancel-in-progress: false
+
+jobs:
+  terraform-dev:
+    runs-on: ubuntu-latest
+
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      TFSTATE_RG: ${{ vars.TFSTATE_RG }}
+      TFSTATE_SA: ${{ vars.TFSTATE_SA }}
+      TFSTATE_CONTAINER: ${{ vars.TFSTATE_CONTAINER }}
+      TFSTATE_KEY: ${{ vars.TFSTATE_KEY }}
+
+      # Terraform variables (recommended to store passwords as GitHub secrets)
+      TF_VAR_sql_admin_username: ${{ secrets.TF_VAR_sql_admin_username }}
+      TF_VAR_sql_admin_password: ${{ secrets.TF_VAR_sql_admin_password }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Ensure Terraform backend exists (RG + SA + container)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Ensuring backend RG exists..."
+          az group create -n "$TFSTATE_RG" -l "westus" 1>/dev/null
+
+          echo "Ensuring storage account exists..."
+          # Create only if it doesn't exist
+          if ! az storage account show -g "$TFSTATE_RG" -n "$TFSTATE_SA" 1>/dev/null 2>&1; then
+            az storage account create \
+              -g "$TFSTATE_RG" \
+              -n "$TFSTATE_SA" \
+              -l "westus" \
+              --sku Standard_LRS \
+              --kind StorageV2 \
+              --https-only true 1>/dev/null
+          fi
+
+          echo "Ensuring container exists..."
+          az storage container create \
+            --name "$TFSTATE_CONTAINER" \
+            --account-name "$TFSTATE_SA" \
+            --auth-mode login 1>/dev/null
+
+          echo "Backend ready: $TFSTATE_RG / $TFSTATE_SA / $TFSTATE_CONTAINER"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init (dev)
+        working-directory: envs/dev
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${TFSTATE_RG}" \
+            -backend-config="storage_account_name=${TFSTATE_SA}" \
+            -backend-config="container_name=${TFSTATE_CONTAINER}" \
+            -backend-config="key=${TFSTATE_KEY}"
+
+      - name: Terraform Fmt (check)
+        working-directory: envs/dev
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Validate
+        working-directory: envs/dev
+        run: terraform validate
+
+      - name: Terraform Plan (dev)
+        working-directory: envs/dev
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply (dev)
+        if: github.ref == 'refs/heads/main'
+        working-directory: envs/dev
+        run: terraform apply -auto-approve tfplan
+

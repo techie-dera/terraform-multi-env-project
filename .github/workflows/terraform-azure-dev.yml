@@ -5,7 +5,7 @@ on:
   push:
     branches: [ "main" ]
     paths:
-      - "envs/dev/**"
+      - "env/dev/**"
       - "modules/**"
       - ".github/workflows/terraform-azure-dev.yml"
 

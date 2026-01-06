@@ -83,5 +83,9 @@ variable "kv_purge_protection_enabled" {
   description = "Key Vault purge protection (recommended true in prod)"
   default     = false
 }
+variable "subscription_id" {
+  type = string
+}
+
 
 

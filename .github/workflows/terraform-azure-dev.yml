@@ -3,11 +3,11 @@ name: Terraform - Dev (Azure)
 on:
   workflow_dispatch: {}
   push:
-    branches: [ "main" ]
+    branches: ["main"]
     paths:
       - "env/dev/**"
       - "modules/**"
-      - ".github/workflows/terraform-azure-dev.yml"
+      - ".github/workflows/**"
 
 permissions:
   id-token: write
@@ -20,13 +20,19 @@ concurrency:
 jobs:
   terraform-dev:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
 
     env:
+      TF_IN_AUTOMATION: "true"
+
       # AzureRM provider auth via OIDC
       ARM_USE_OIDC: "true"
       ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # IMPORTANT: prevent provider auto-registration during plan/apply
+      ARM_SKIP_PROVIDER_REGISTRATION: "true"
 
       # Backend settings
       TFSTATE_RG: ${{ secrets.TFSTATE_RG }}
@@ -34,7 +40,7 @@ jobs:
       TFSTATE_CONTAINER: ${{ secrets.TFSTATE_CONTAINER }}
       TFSTATE_KEY: ${{ secrets.TFSTATE_KEY }}
 
-      # Terraform input variables (auto picked up by Terraform)
+      # Terraform input variables
       TF_VAR_sql_admin_username: ${{ secrets.TF_VAR_sql_admin_username }}
       TF_VAR_sql_admin_password: ${{ secrets.TF_VAR_sql_admin_password }}
 
@@ -60,6 +66,16 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # One-time-ish provider registration. Safe to run every time.
+      - name: Register Azure resource providers (recommended)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for ns in Microsoft.Network Microsoft.Storage Microsoft.KeyVault Microsoft.Web Microsoft.Sql Microsoft.OperationalInsights Microsoft.Insights; do
+            echo "Registering provider: $ns"
+            az provider register --namespace "$ns" --wait
+          done
 
       - name: Ensure Terraform backend exists (RG + SA + container)
         shell: bash
@@ -101,7 +117,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          terraform init \
+          terraform init -reconfigure \
             -backend-config="resource_group_name=${TFSTATE_RG}" \
             -backend-config="storage_account_name=${TFSTATE_SA}" \
             -backend-config="container_name=${TFSTATE_CONTAINER}" \
@@ -117,9 +133,9 @@ jobs:
 
       - name: Terraform Plan (dev)
         working-directory: env/dev
-        run: terraform plan -out=tfplan
+        run: terraform plan -parallelism=5 -lock-timeout=10m -out=tfplan
 
       - name: Terraform Apply (dev)
         if: github.ref == 'refs/heads/main'
         working-directory: env/dev
-        run: terraform apply -auto-approve tfplan
+        run: terraform apply -parallelism=5 -lock-timeout=10m -auto-approve tfplan
